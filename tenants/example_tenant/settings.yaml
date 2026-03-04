@@ -1,0 +1,108 @@
+# =============================================================================
+# Configuração do Tenant: Example Tenant
+# =============================================================================
+# Este arquivo é um modelo completo de configuração para um cliente B2B.
+# Copie esta pasta, renomeie, e customize os valores para cada novo cliente.
+# =============================================================================
+
+# --- Identidade do Agente ---
+agent:
+  # Nome exibido nas respostas (pode ser referenciado no system_prompt como {agent.name})
+  name: "Atendente Virtual da Empresa X"
+
+  # Estilo de comunicação do agente
+  personality: "Profissional, objetivo e simpático"
+
+  # Idioma das respostas
+  language: "pt-BR"
+
+  # Prompt de sistema enviado ao provedor de IA
+  # Use {agent.name} e {agent.personality} para referências dinâmicas
+  system_prompt: |
+    Você é o Atendente Virtual da Empresa X, um assistente de suporte ao cliente.
+    Responda sempre em português brasileiro, de forma profissional, objetiva e simpática.
+    
+    Regras:
+    - Nunca mencione concorrentes
+    - Nunca discuta política ou religião
+    - Se não souber responder, diga que vai verificar e peça o contato do cliente
+    - Seja conciso: respostas com no máximo 3 parágrafos
+    - Use emojis com moderação (máximo 1 por mensagem)
+
+# --- Filtro de Tópicos ---
+topics:
+  # Tópicos que o agente pode discutir
+  allowed:
+    - suporte técnico
+    - dúvidas sobre produtos
+    - agendamentos
+    - preços e planos
+    - horário de funcionamento
+
+  # Tópicos que o agente deve recusar
+  blocked:
+    - política
+    - religião
+    - concorrentes
+    - assuntos pessoais
+
+# --- Horário de Atendimento ---
+business_hours:
+  # Timezone IANA (ver: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
+  timezone: "America/Sao_Paulo"
+
+  # Formato: "HH:MM-HH:MM" ou null (sem atendimento)
+  schedule:
+    monday_friday: "08:00-18:00"
+    saturday: "09:00-13:00"
+    sunday: null
+
+  # Mensagem exibida fora do horário configurado
+  out_of_hours_message: >
+    Nosso horário de atendimento é de segunda a sexta, das 8h às 18h,
+    e aos sábados, das 9h às 13h. Deixe sua mensagem que retornaremos
+    assim que possível!
+
+# --- Escalação para Humano ---
+escalation:
+  # Frases que acionam a transferência para um humano
+  trigger_keywords:
+    - "falar com humano"
+    - "atendente"
+    - "gerente"
+    - "reclamação"
+
+  # Ação a tomar: "webhook" (chama URL) ou "message" (apenas exibe mensagem)
+  action: "webhook"
+
+  # URL para receber o evento de escalação (se action = webhook)
+  webhook_url: "https://exemplo.com/api/escalation"
+
+  # Mensagem exibida ao usuário durante a escalação
+  message: "Vou te conectar com nossa equipe. Aguarde um momento!"
+
+# --- Cache Semântico ---
+cache:
+  # Similaridade mínima para considerar um cache hit (0.0 a 1.0)
+  # Valores mais altos = mais conservador (menos hits, mais precisão)
+  # Valores mais baixos = mais agressivo (mais hits, risco de resposta errada)
+  semantic_threshold: 0.92
+
+  # Tempo de vida das respostas no cache (em horas)
+  ttl_hours: 24
+
+# --- Webhooks de Eventos ---
+webhooks:
+  # Lista de eventos que serão enviados ao endpoint configurado
+  events:
+    - message_received
+    - escalation_triggered
+    - session_started
+    - session_ended
+
+  # URL que receberá os webhooks via POST
+  endpoint: "https://exemplo.com/webhooks/agent"
+
+  # Secret para assinatura HMAC-SHA256 (recomendado: usar variável de ambiente)
+  # Exemplo: "${CLIENTE_WEBHOOK_SECRET}" será substituído pelo valor da env var
+  secret: "mude-este-secret-em-producao"
