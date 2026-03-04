@@ -1,8 +1,10 @@
-"""Evolution API client for WhatsApp message delivery.
+"""WAHA (WhatsApp HTTP API) client for WhatsApp message delivery.
 
-Wraps the Evolution API v2 REST interface to send and receive
+Wraps the WAHA REST interface to send and receive
 WhatsApp messages. Each instance is configured for a specific
-Evolution API server.
+WAHA server.
+
+Docs: https://waha.devlike.pro/docs/how-to/send-messages/
 """
 
 from __future__ import annotations
@@ -18,11 +20,11 @@ from app.core.interfaces import WhatsAppProvider
 logger = logging.getLogger(__name__)
 
 
-class EvolutionAPIProvider(WhatsAppProvider):
-    """WhatsApp provider backed by Evolution API.
+class WAHAProvider(WhatsAppProvider):
+    """WhatsApp provider backed by WAHA (WhatsApp HTTP API).
 
     Attributes:
-        _base_url: Evolution API server URL.
+        _base_url: WAHA server URL.
         _api_key: Authentication key for the API.
         _client: Async HTTP client for making requests.
     """
@@ -34,8 +36,8 @@ class EvolutionAPIProvider(WhatsAppProvider):
         client: httpx.AsyncClient | None = None,
     ) -> None:
         settings = get_settings()
-        self._base_url = (base_url or settings.EVOLUTION_API_URL).rstrip("/")
-        self._api_key = api_key or settings.EVOLUTION_API_KEY
+        self._base_url = (base_url or settings.WAHA_API_URL).rstrip("/")
+        self._api_key = api_key or settings.WAHA_API_KEY
         self._client = client
 
     async def connect(self) -> None:
@@ -63,36 +65,40 @@ class EvolutionAPIProvider(WhatsAppProvider):
         Args:
             phone: Recipient phone in international format (e.g. 5511999999999).
             text: Message body text.
-            instance_name: Evolution API instance name.
+            instance_name: WAHA session name.
 
         Raises:
             WhatsAppDeliveryError: If the API call fails.
         """
         assert self._client is not None
 
-        endpoint = f"/message/sendText/{instance_name}"
+        # WAHA expects chatId in the format "number@c.us"
+        chat_id = f"{phone}@c.us" if "@" not in phone else phone
+
+        endpoint = "/api/sendText"
         payload = {
-            "number": phone,
+            "session": instance_name,
+            "chatId": chat_id,
             "text": text,
         }
 
         response = await self._post(endpoint, payload)
         logger.info(
-            "Message sent: phone=%s instance=%s status=%d",
+            "Message sent: phone=%s session=%s status=%d",
             phone,
             instance_name,
             response.status_code,
         )
 
     async def health_check(self) -> bool:
-        """Check if the Evolution API server is reachable.
+        """Check if the WAHA server is reachable.
 
         Returns:
             True if the server responds successfully.
         """
         try:
             assert self._client is not None
-            response = await self._client.get("/instance/fetchInstances")
+            response = await self._client.get("/api/sessions/")
             return response.status_code == 200
         except Exception:
             return False
@@ -103,10 +109,12 @@ class EvolutionAPIProvider(WhatsAppProvider):
 
     def _build_headers(self) -> dict[str, str]:
         """Build the authentication headers."""
-        return {
-            "apikey": self._api_key,
+        headers: dict[str, str] = {
             "Content-Type": "application/json",
         }
+        if self._api_key:
+            headers["X-Api-Key"] = self._api_key
+        return headers
 
     async def _post(
         self,
@@ -133,10 +141,10 @@ class EvolutionAPIProvider(WhatsAppProvider):
             return response
         except httpx.HTTPStatusError as exc:
             raise WhatsAppDeliveryError(
-                f"Evolution API error {exc.response.status_code}: "
+                f"WAHA API error {exc.response.status_code}: "
                 f"{exc.response.text}"
             ) from exc
         except httpx.RequestError as exc:
             raise WhatsAppDeliveryError(
-                f"Evolution API connection error: {exc}"
+                f"WAHA API connection error: {exc}"
             ) from exc

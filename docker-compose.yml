@@ -13,10 +13,9 @@ services:
     volumes:
       - ./tenants:/app/tenants:ro
     depends_on:
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      - redis
+      - qdrant
+      - waha
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -24,6 +23,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  waha:
+    image: devlikeapro/waha:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - WHATSAPP_API_KEY=${WAHA_API_KEY}
+      - WHATSAPP_RESTART_ALL_SESSIONS=True
+      - WAHA_DASHBOARD_USERNAME=${WAHA_DASHBOARD_USERNAME}
+      - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
+      - WHATSAPP_SWAGGER_USERNAME=${WAHA_SWAGGER_USERNAME}
+      - WHATSAPP_SWAGGER_PASSWORD=${WAHA_SWAGGER_PASSWORD}
+      - WHATSAPP_HOOK_URL=http://app:8000/api/v1/webhook/waha
+      - WHATSAPP_HOOK_EVENTS=message
+    volumes:
+      - waha_data:/tmp/waha-sessions
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "X-Api-Key: ${WAHA_API_KEY}", "http://localhost:3000/api/sessions/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -39,15 +61,13 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.12.1
+    ports:
+      - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 volumes:
   redis_data:
   qdrant_data:
+  waha_data:

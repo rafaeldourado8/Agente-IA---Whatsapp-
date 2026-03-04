@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://qdrant:6333"
     QDRANT_COLLECTION_NAME: str = "conversations"
 
-    # Evolution API (WhatsApp)
-    EVOLUTION_API_URL: str = "http://evolution-api:8080"
-    EVOLUTION_API_KEY: str
+    # WAHA (WhatsApp HTTP API)
+    WAHA_API_URL: str = "http://localhost:3000"
+    WAHA_API_KEY: str = ""
 
     # Webhook Security
     WEBHOOK_SECRET: str = ""

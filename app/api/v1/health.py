@@ -1,7 +1,7 @@
 """Health check endpoint.
 
 Exposes the application's health status and the status of each
-external dependency (Redis, Qdrant, Evolution API).
+external dependency (Redis, Qdrant, WAHA).
 """
 
 from __future__ import annotations
@@ -25,22 +25,22 @@ router = APIRouter(tags=["health"])
 async def health_check() -> dict:
     """Return the health status of all dependencies.
 
-    Checks connectivity to Redis, Qdrant, and Evolution API.
+    Checks connectivity to Redis, Qdrant, and WAHA.
     Returns HTTP 200 even if a dependency is down — the response
     body indicates individual service status.
     """
     redis_ok = await _check_redis()
     qdrant_ok = await _check_qdrant()
-    evolution_ok = await _check_evolution()
+    waha_ok = await _check_waha()
 
-    all_healthy = redis_ok and qdrant_ok and evolution_ok
+    all_healthy = redis_ok and qdrant_ok and waha_ok
 
     return {
         "status": "healthy" if all_healthy else "degraded",
         "services": {
             "redis": "up" if redis_ok else "down",
             "qdrant": "up" if qdrant_ok else "down",
-            "evolution_api": "up" if evolution_ok else "down",
+            "waha": "up" if waha_ok else "down",
         },
     }
 
@@ -63,8 +63,8 @@ async def _check_qdrant() -> bool:
         return False
 
 
-async def _check_evolution() -> bool:
-    """Check Evolution API connectivity."""
+async def _check_waha() -> bool:
+    """Check WAHA connectivity."""
     try:
         provider = get_whatsapp_provider()
         return await provider.health_check()  # type: ignore[attr-defined]

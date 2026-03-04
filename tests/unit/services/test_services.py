@@ -15,7 +15,7 @@ from app.models.message import Message, MessageRole
 from app.models.webhook import DeliveryStatus, WebhookEvent
 from app.services.cache.redis_cache import RedisCacheProvider
 from app.services.webhook.webhook_store import WebhookStore
-from app.services.whatsapp.evolution_api import EvolutionAPIProvider
+from app.services.whatsapp.waha_api import WAHAProvider
 
 
 # ===================================================================
@@ -135,11 +135,11 @@ class TestRedisCacheProvider:
 
 
 # ===================================================================
-# Evolution API Tests
+# WAHA API Tests
 # ===================================================================
 
-class TestEvolutionAPIProvider:
-    """Tests for EvolutionAPIProvider."""
+class TestWAHAProvider:
+    """Tests for WAHAProvider."""
 
     @pytest.fixture()
     def mock_client(self) -> AsyncMock:
@@ -154,10 +154,10 @@ class TestEvolutionAPIProvider:
         return client
 
     @pytest.fixture()
-    def provider(self, mock_client: AsyncMock) -> EvolutionAPIProvider:
+    def provider(self, mock_client: AsyncMock) -> WAHAProvider:
         """Create provider with mocked client."""
-        return EvolutionAPIProvider(
-            base_url="http://test:8080",
+        return WAHAProvider(
+            base_url="http://test:3000",
             api_key="test-key",
             client=mock_client,
         )
@@ -165,7 +165,7 @@ class TestEvolutionAPIProvider:
     @pytest.mark.asyncio
     async def test_send_message_when_success_should_post_to_api(
         self,
-        provider: EvolutionAPIProvider,
+        provider: WAHAProvider,
         mock_client: AsyncMock,
     ) -> None:
         await provider.send_message("5511999999999", "Olá!")
@@ -173,12 +173,12 @@ class TestEvolutionAPIProvider:
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert "sendText" in call_args[0][0]
-        assert call_args[1]["json"]["number"] == "5511999999999"
+        assert call_args[1]["json"]["chatId"] == "5511999999999@c.us"
 
     @pytest.mark.asyncio
     async def test_send_message_when_api_error_should_raise_error(
         self,
-        provider: EvolutionAPIProvider,
+        provider: WAHAProvider,
         mock_client: AsyncMock,
     ) -> None:
         request = httpx.Request("POST", "http://test/send")
@@ -196,7 +196,7 @@ class TestEvolutionAPIProvider:
 
     @pytest.mark.asyncio
     async def test_health_check_when_api_up_should_return_true(
-        self, provider: EvolutionAPIProvider
+        self, provider: WAHAProvider
     ) -> None:
         result = await provider.health_check()
         assert result is True

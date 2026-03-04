@@ -1,96 +1,135 @@
-# WhatsApp B2B AI Agent
+# 🤖 WhatsApp B2B AI Agent
 
-Multi-tenant WhatsApp AI agent for B2B customer support. Powered by Google Gemini, with semantic caching, conversation memory, and per-client configuration via YAML.
+Agente de IA para atendimento ao cliente via WhatsApp.  
+Multi-tenant, com cache semântico, memória de conversa e configuração por cliente via YAML.
 
-## Quick Start
+---
+
+## ⚡ Início Rápido (5 minutos)
+
+### Pré-requisitos
+
+- **Docker Desktop** instalado ([Download](https://www.docker.com/products/docker-desktop/))
+- **Chave da API Google Gemini** ([Obter grátis](https://aistudio.google.com/apikey))
+
+### Passo a passo
 
 ```bash
-# 1. Clone
-git clone <repository-url>
+# 1. Clone o repositório
+git clone <url-do-repositorio>
 cd whatsapp-agent
 
-# 2. Configure
+# 2. Configure as variáveis de ambiente
 cp .env.example .env
-# Edit .env with your API keys and passwords
+# Edite o .env e coloque sua GEMINI_API_KEY
 
-# 3. Setup first tenant
-cp -r tenants/example_tenant tenants/my_client
-# Edit tenants/my_client/settings.yaml
-
-# 4. Start
+# 3. Suba todos os serviços
 docker compose up -d
 
-# 5. Verify
+# 4. Verifique se está tudo rodando
+# Windows PowerShell:
+Invoke-RestMethod http://localhost:8000/health
+# Linux/macOS:
 curl http://localhost:8000/health
 ```
 
-## Architecture
+Você deve ver:
+```json
+{
+  "status": "healthy",
+  "services": {
+    "redis": "up",
+    "qdrant": "up",
+    "waha": "up"
+  }
+}
+```
+
+### 5. Conecte seu WhatsApp
+
+Acesse o painel do WAHA em `http://localhost:3000/dashboard` e escaneie o QR Code.  
+Veja detalhes em [📱 Configuração do WAHA](docs/02-configuracao-waha.md).
+
+---
+
+## 🏗️ Arquitetura
 
 ```
-WhatsApp User → Evolution API → FastAPI → Cache/AI/Qdrant → Response
+Usuário WhatsApp → WAHA → FastAPI App → Cache/AI/Qdrant → Resposta
 ```
 
-- **AI:** Google Gemini for response generation
-- **Cache:** Redis semantic cache (reduces cost by 40–70%)
-- **Memory:** Qdrant vector database for conversation history
-- **Config:** YAML per tenant — no code changes to onboard clients
+| Componente | Tecnologia | Função |
+|-----------|-----------|--------|
+| **Backend** | FastAPI (Python 3.12) | API REST, webhooks, orquestração |
+| **IA** | Google Gemini 2.0 Flash | Geração de respostas inteligentes |
+| **Cache** | Redis 7 | Cache semântico (reduz custo 40–70%) |
+| **Memória** | Qdrant | Histórico vetorial de conversas |
+| **WhatsApp** | WAHA | Gateway HTTP para WhatsApp |
+| **Deploy** | Docker Compose | Infraestrutura containerizada |
 
-## Key Features
+---
 
-- 🧠 **Semantic cache** — similar questions get instant cached responses
-- 🏢 **Multi-tenant** — each client has isolated config, cache, and history
-- ⏰ **Business hours** — automatic out-of-hours messages
-- 🚨 **Escalation** — keyword triggers for human handoff via webhook
-- 🔗 **Webhooks** — event notifications with HMAC signing and retry
-- 📊 **Health checks** — monitors Redis, Qdrant, and Evolution API
-- 🐳 **Docker-native** — single command deployment
+## ✨ Funcionalidades
 
-## Documentation
+| Feature | Descrição |
+|---------|-----------|
+| 🧠 **Cache Semântico** | Perguntas similares recebem respostas instantâneas do cache |
+| 🏢 **Multi-tenant** | Cada cliente tem config, cache e histórico isolados |
+| ⏰ **Horário Comercial** | Mensagem automática fora do expediente |
+| 🚨 **Escalação** | Palavras-chave transferem para humano via webhook |
+| 🔗 **Webhooks** | Notificações de eventos com assinatura HMAC |
+| 📊 **Health Checks** | Monitora Redis, Qdrant e WAHA |
+| 🐳 **Docker-native** | Deploy com um único comando |
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/architecture.md) | System design and component overview |
-| [Tenant Config Guide](docs/tenant-config-guide.md) | How to configure a new client |
-| [API Reference](docs/api-reference.md) | All endpoints with request/response schemas |
-| [Webhook Schema](docs/webhook-schema.md) | Webhook events and HMAC verification |
-| [Deployment Guide](docs/deployment.md) | Step-by-step VPS deployment |
+---
 
-## API Endpoints
+## 📚 Documentação Completa
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check with dependency status |
-| `POST` | `/api/v1/webhook/message` | Receive WhatsApp message |
-| `GET` | `/api/v1/admin/tenants` | List all tenants |
-| `GET` | `/api/v1/admin/tenants/{id}` | Get tenant config |
-| `POST` | `/api/v1/admin/tenants/{id}/reload` | Reload tenant config |
-| `POST` | `/api/v1/admin/tenants/reload-all` | Clear config cache |
+| Guia | Descrição |
+|------|-----------|
+| [📦 Instalação Local](docs/01-instalacao-local.md) | Setup completo para Windows, Linux e macOS |
+| [📱 Configuração do WAHA](docs/02-configuracao-waha.md) | Conectar WhatsApp, QR Code, sessões |
+| [🤖 Configuração do Agente](docs/03-configuracao-agente.md) | Prompts, horários, escalação, cache |
+| [🖥️ Deploy em VPS](docs/04-deploy-vps.md) | Deploy em qualquer VPS (DigitalOcean, Hostinger, etc.) |
+| [☁️ Deploy na AWS EC2](docs/05-deploy-aws-ec2.md) | Deploy passo a passo na Amazon EC2 |
+| [🔧 Troubleshooting](docs/06-troubleshooting.md) | Problemas comuns e soluções |
 
-## Development
+---
+
+## 🔌 Endpoints da API
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/health` | Status dos serviços |
+| `POST` | `/api/v1/webhook/waha` | Recebe mensagens do WAHA (produção) |
+| `POST` | `/api/v1/webhook/message` | Recebe mensagens (teste manual) |
+| `GET` | `/api/v1/admin/tenants` | Lista todos os tenants |
+| `GET` | `/api/v1/admin/tenants/{id}` | Config de um tenant |
+| `POST` | `/api/v1/admin/tenants/{id}/reload` | Recarrega config do tenant |
+| `POST` | `/api/v1/admin/tenants/reload-all` | Limpa cache de configs |
+
+Documentação interativa disponível em: `http://localhost:8000/docs`
+
+---
+
+## 🛠️ Desenvolvimento
 
 ```bash
-# Start with hot reload
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-# Run tests
+# Instalar dependências de desenvolvimento
 pip install -e ".[dev]"
+
+# Rodar testes
 pytest tests/ -v
 
 # Lint
 ruff check app/
+
+# Type check
+mypy app/
 ```
 
-## Tech Stack
+---
 
-| Component | Technology |
-|-----------|-----------|
-| Backend | FastAPI (Python 3.10+) |
-| AI | Google Gemini |
-| Cache | Redis 7 |
-| Vector DB | Qdrant |
-| WhatsApp | Evolution API |
-| Deploy | Docker + Docker Compose |
+## 📄 Licença
 
-## License
-
-Proprietary — all rights reserved.
+Proprietário — todos os direitos reservados.

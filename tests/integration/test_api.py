@@ -19,7 +19,7 @@ def mock_services(monkeypatch: pytest.MonkeyPatch):
     """Mock all service singletons in the dependencies module."""
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setenv("REDIS_PASSWORD", "test")
-    monkeypatch.setenv("EVOLUTION_API_KEY", "test")
+    monkeypatch.setenv("WAHA_API_KEY", "test")
     monkeypatch.setenv("TENANT_CONFIG_DIR", "./tenants")
 
     from app.config import get_settings
@@ -32,8 +32,8 @@ def mock_services(monkeypatch: pytest.MonkeyPatch):
     mock_cache.health_check = AsyncMock(return_value=True)
     mock_qdrant = AsyncMock()
     mock_qdrant.health_check = AsyncMock(return_value=True)
-    mock_evolution = AsyncMock()
-    mock_evolution.health_check = AsyncMock(return_value=True)
+    mock_waha = AsyncMock()
+    mock_waha.health_check = AsyncMock(return_value=True)
     mock_webhook_store = MagicMock()
     mock_webhook_store.persist_received = MagicMock()
     mock_webhook_store.get_received = MagicMock(return_value=[])
@@ -50,14 +50,14 @@ def mock_services(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(deps, "_redis_cache", mock_cache)
     monkeypatch.setattr(deps, "_qdrant_store", mock_qdrant)
-    monkeypatch.setattr(deps, "_evolution_api", mock_evolution)
+    monkeypatch.setattr(deps, "_waha_provider", mock_waha)
     monkeypatch.setattr(deps, "_webhook_store", mock_webhook_store)
     monkeypatch.setattr(deps, "_agent", mock_agent)
 
     return {
         "cache": mock_cache,
         "qdrant": mock_qdrant,
-        "evolution": mock_evolution,
+        "waha": mock_waha,
         "webhook_store": mock_webhook_store,
         "agent": mock_agent,
     }
@@ -102,7 +102,7 @@ class TestHealthEndpoint:
         assert data["status"] == "healthy"
         assert data["services"]["redis"] == "up"
         assert data["services"]["qdrant"] == "up"
-        assert data["services"]["evolution_api"] == "up"
+        assert data["services"]["waha"] == "up"
 
     def test_health_when_redis_down_should_return_degraded(
         self, client: TestClient, mock_services: dict
@@ -130,7 +130,7 @@ class TestWebhookEndpoint:
         response = client.post(
             "/api/v1/webhook/message",
             json={
-                "instance": "example_tenant",
+                "instance": "default",
                 "phone": "5511999999999",
                 "message": "Olá!",
             },
@@ -187,11 +187,11 @@ class TestAdminEndpoints:
     def test_get_tenant_when_exists_should_return_config(
         self, client: TestClient
     ) -> None:
-        response = client.get("/api/v1/admin/tenants/example_tenant")
+        response = client.get("/api/v1/admin/tenants/default")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["tenant_id"] == "example_tenant"
+        assert data["tenant_id"] == "default"
         assert "agent_name" in data
 
     def test_get_tenant_when_missing_should_return_404(
@@ -229,3 +229,88 @@ class TestAdminEndpoints:
         data = response.json()
         assert "count" in data
         assert "deliveries" in data
+
+
+# ===================================================================
+# WAHA Native Webhook Tests
+# ===================================================================
+
+class TestWahaWebhookEndpoint:
+    """Tests for POST /api/v1/webhook/waha."""
+
+    def test_waha_message_when_valid_should_process(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/api/v1/webhook/waha",
+            json={
+                "event": "message",
+                "session": "default",
+                "payload": {
+                    "from": "5511999999999@c.us",
+                    "body": "Olá!",
+                    "fromMe": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["response"] == "Olá! Como posso ajudar?"
+
+    def test_waha_message_when_from_me_should_ignore(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/api/v1/webhook/waha",
+            json={
+                "event": "message",
+                "session": "default",
+                "payload": {
+                    "from": "5511999999999@c.us",
+                    "body": "My own message",
+                    "fromMe": True,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+
+    def test_waha_event_when_not_message_should_ignore(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/api/v1/webhook/waha",
+            json={
+                "event": "session.status",
+                "session": "default",
+                "payload": {"status": "WORKING"},
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+
+    def test_waha_message_when_empty_body_should_ignore(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/api/v1/webhook/waha",
+            json={
+                "event": "message",
+                "session": "default",
+                "payload": {
+                    "from": "5511999999999@c.us",
+                    "body": "",
+                    "fromMe": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"

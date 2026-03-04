@@ -194,7 +194,7 @@ class TestLoadTenant:
         monkeypatch.setenv("TENANT_CONFIG_DIR", str(tenants_root))
         monkeypatch.setenv("GEMINI_API_KEY", "test")
         monkeypatch.setenv("REDIS_PASSWORD", "test")
-        monkeypatch.setenv("EVOLUTION_API_KEY", "test")
+        monkeypatch.setenv("WAHA_API_KEY", "test")
 
         # Force re-creation of settings with new env
         from app.config import get_settings
@@ -209,7 +209,7 @@ class TestLoadTenant:
         monkeypatch.setenv("TENANT_CONFIG_DIR", str(tenants_root))
         monkeypatch.setenv("GEMINI_API_KEY", "test")
         monkeypatch.setenv("REDIS_PASSWORD", "test")
-        monkeypatch.setenv("EVOLUTION_API_KEY", "test")
+        monkeypatch.setenv("WAHA_API_KEY", "test")
 
         from app.config import get_settings
         get_settings.cache_clear()
@@ -223,7 +223,7 @@ class TestLoadTenant:
         monkeypatch.setenv("TENANT_CONFIG_DIR", str(tenants_root))
         monkeypatch.setenv("GEMINI_API_KEY", "test")
         monkeypatch.setenv("REDIS_PASSWORD", "test")
-        monkeypatch.setenv("EVOLUTION_API_KEY", "test")
+        monkeypatch.setenv("WAHA_API_KEY", "test")
 
         from app.config import get_settings
         get_settings.cache_clear()
@@ -238,7 +238,7 @@ class TestLoadTenant:
         monkeypatch.setenv("TENANT_CONFIG_DIR", str(tenants_root))
         monkeypatch.setenv("GEMINI_API_KEY", "test")
         monkeypatch.setenv("REDIS_PASSWORD", "test")
-        monkeypatch.setenv("EVOLUTION_API_KEY", "test")
+        monkeypatch.setenv("WAHA_API_KEY", "test")
 
         from app.config import get_settings
         get_settings.cache_clear()
@@ -254,7 +254,7 @@ class TestLoadTenant:
         monkeypatch.setenv("TENANT_CONFIG_DIR", str(tenants_root))
         monkeypatch.setenv("GEMINI_API_KEY", "test")
         monkeypatch.setenv("REDIS_PASSWORD", "test")
-        monkeypatch.setenv("EVOLUTION_API_KEY", "test")
+        monkeypatch.setenv("WAHA_API_KEY", "test")
 
         from app.config import get_settings
         get_settings.cache_clear()

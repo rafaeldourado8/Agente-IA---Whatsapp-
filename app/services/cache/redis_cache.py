@@ -96,12 +96,16 @@ class RedisCacheProvider(CacheProvider):
             ttl: Time-to-live in seconds.
             tenant_id: Tenant namespace for cache isolation.
         """
+        # Skip caching if no embedding function
+        if self._embedding_fn is None:
+            logger.warning("Skipping cache write: no embedding function configured")
+            return
+            
         try:
             await self._store_entry(query, response, ttl, tenant_id)
         except Exception as exc:
-            raise CacheOperationError(
-                f"Cache write failed for tenant '{tenant_id}': {exc}"
-            ) from exc
+            logger.warning("Cache write failed for tenant '%s': %s", tenant_id, exc)
+            # Don't raise - allow the request to continue without caching
 
     async def clear_tenant(self, tenant_id: str) -> int:
         """Remove all cached entries for a specific tenant.
@@ -194,6 +198,11 @@ class RedisCacheProvider(CacheProvider):
     ) -> None:
         """Store a new cache entry with its embedding."""
         assert self._client is not None
+
+        # Skip caching if no embedding function
+        if self._embedding_fn is None:
+            logger.warning("Skipping cache write: no embedding function configured")
+            return
 
         embedding = await self._get_embedding(query)
         query_hash = hashlib.sha256(query.encode()).hexdigest()[:16]

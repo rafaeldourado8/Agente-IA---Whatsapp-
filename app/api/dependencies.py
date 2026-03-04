@@ -25,14 +25,14 @@ from app.core.interfaces import (
 from app.services.cache.redis_cache import RedisCacheProvider
 from app.services.vector_store.qdrant_store import QdrantVectorStore
 from app.services.webhook.webhook_store import WebhookStore
-from app.services.whatsapp.evolution_api import EvolutionAPIProvider
+from app.services.whatsapp.waha_api import WAHAProvider
 
 logger = logging.getLogger(__name__)
 
 # Singletons — initialized once, reused across requests
 _redis_cache: RedisCacheProvider | None = None
 _qdrant_store: QdrantVectorStore | None = None
-_evolution_api: EvolutionAPIProvider | None = None
+_waha_provider: WAHAProvider | None = None
 _webhook_store: WebhookStore | None = None
 _agent: AgentOrchestrator | None = None
 
@@ -42,16 +42,33 @@ async def init_services() -> None:
 
     Called during application startup (lifespan).
     """
-    global _redis_cache, _qdrant_store, _evolution_api, _webhook_store, _agent
+    global _redis_cache, _qdrant_store, _waha_provider, _webhook_store, _agent
 
-    _redis_cache = RedisCacheProvider()
+    # Create embedding function using Gemini
+    from app.services.ai.google_gemini import GoogleGeminiProvider
+    import numpy as np
+    
+    gemini_provider = GoogleGeminiProvider()
+    
+    async def embedding_fn(text: str) -> np.ndarray:
+        """Generate embeddings using Gemini."""
+        from google import genai
+        settings = get_settings()
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        result = await client.aio.models.embed_content(
+            model="models/gemini-embedding-001",
+            contents=text,
+        )
+        return np.array(result.embeddings[0].values, dtype=np.float32)
+
+    _redis_cache = RedisCacheProvider(embedding_fn=embedding_fn)
     await _redis_cache.connect()
 
-    _qdrant_store = QdrantVectorStore()
+    _qdrant_store = QdrantVectorStore(embedding_fn=embedding_fn, vector_size=3072)
     await _qdrant_store.connect()
 
-    _evolution_api = EvolutionAPIProvider()
-    await _evolution_api.connect()
+    _waha_provider = WAHAProvider()
+    await _waha_provider.connect()
 
     _webhook_store = WebhookStore()
     await _webhook_store.connect()
@@ -63,7 +80,7 @@ async def init_services() -> None:
         ai_provider=get_ai_provider(),
         cache_service=cache_service,
         conversation=conversation,
-        whatsapp=_evolution_api,
+        whatsapp=_waha_provider,
         webhooks=_webhook_store,
     )
 
@@ -79,8 +96,8 @@ async def shutdown_services() -> None:
         await _redis_cache.disconnect()
     if _qdrant_store:
         await _qdrant_store.disconnect()
-    if _evolution_api:
-        await _evolution_api.disconnect()
+    if _waha_provider:
+        await _waha_provider.disconnect()
     if _webhook_store:
         await _webhook_store.disconnect()
 
@@ -111,8 +128,8 @@ def get_vector_store() -> VectorStoreProvider:
 
 def get_whatsapp_provider() -> WhatsAppProvider:
     """Return the WhatsApp provider singleton."""
-    assert _evolution_api is not None, "Services not initialized"
-    return _evolution_api
+    assert _waha_provider is not None, "Services not initialized"
+    return _waha_provider
 
 
 def get_webhook_dispatcher() -> WebhookDispatcher:

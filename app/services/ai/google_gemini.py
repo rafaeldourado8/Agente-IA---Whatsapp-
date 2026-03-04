@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 import time
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.config import get_settings
 from app.core.exceptions import AIProviderError
@@ -26,14 +27,13 @@ class GoogleGeminiProvider(AIProvider):
 
     Attributes:
         _model_name: Gemini model identifier.
-        _model: Configured GenerativeModel instance.
+        _client: Configured genai client.
     """
 
     def __init__(self, model_name: str | None = None) -> None:
         settings = get_settings()
         self._model_name = model_name or settings.GEMINI_MODEL
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self._model = genai.GenerativeModel(self._model_name)
+        self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
     async def generate_response(
         self,
@@ -79,7 +79,7 @@ class GoogleGeminiProvider(AIProvider):
     async def _call_gemini(
         self,
         system_prompt: str,
-        history: list[dict[str, str]],
+        history: list[types.Content],
     ) -> str:
         """Execute the Gemini API call.
 
@@ -90,17 +90,13 @@ class GoogleGeminiProvider(AIProvider):
         Returns:
             Generated text response.
         """
-        chat = self._model.start_chat(history=history[:-1])
-
-        last_message = history[-1]["parts"] if history else ""
-
-        full_prompt = (
-            f"{system_prompt}\n\n{last_message}"
-            if not history[:-1]
-            else last_message
+        response = await self._client.aio.models.generate_content(
+            model=self._model_name,
+            contents=history,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+            ),
         )
-
-        response = await chat.send_message_async(full_prompt)
 
         if not response.text:
             raise AIProviderError("Gemini returned an empty response")
@@ -116,10 +112,8 @@ class GoogleGeminiProvider(AIProvider):
     @staticmethod
     def _build_history(
         messages: list[Message],
-    ) -> list[dict[str, str]]:
+    ) -> list[types.Content]:
         """Convert internal messages to Gemini's history format.
-
-        Gemini expects: [{"role": "user"|"model", "parts": "text"}, ...]
 
         Args:
             messages: Internal message list.
@@ -130,8 +124,10 @@ class GoogleGeminiProvider(AIProvider):
         history = []
         for msg in messages:
             role = "model" if msg.role == MessageRole.ASSISTANT else "user"
-            history.append({
-                "role": role,
-                "parts": msg.content,
-            })
+            history.append(
+                types.Content(
+                    role=role,
+                    parts=[types.Part(text=msg.content)],
+                )
+            )
         return history
