@@ -1,0 +1,23 @@
+# docker-compose.dev.yml
+# Development overrides — extends docker-compose.yml
+# Run with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  app:
+    build:
+      target: builder
+    volumes:
+      - ./app:/app/app
+      - ./tenants:/app/tenants
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - LOG_LEVEL=DEBUG
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  qdrant:
+    ports:
+      - "6333:6333"
+      - "6334:6334"
