@@ -224,6 +224,8 @@ class RedisCacheProvider(CacheProvider):
         """Generate an embedding vector for the given text."""
         if self._embedding_fn is None:
             raise CacheOperationError("No embedding function configured")
+        if not text or not text.strip():
+            raise CacheOperationError("Cannot generate embedding for empty text")
         return await self._embedding_fn(text)
 
     @staticmethod

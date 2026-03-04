@@ -74,6 +74,7 @@ Usuário WhatsApp → WAHA → FastAPI App → Cache/AI/Qdrant → Resposta
 | Feature | Descrição |
 |---------|-----------|
 | 🧠 **Cache Semântico** | Perguntas similares recebem respostas instantâneas do cache |
+| 🎨 **Multimodal** | Processa imagens e áudio além de texto |
 | 🏢 **Multi-tenant** | Cada cliente tem config, cache e histórico isolados |
 | ⏰ **Horário Comercial** | Mensagem automática fora do expediente |
 | 🚨 **Escalação** | Palavras-chave transferem para humano via webhook |
@@ -93,6 +94,7 @@ Usuário WhatsApp → WAHA → FastAPI App → Cache/AI/Qdrant → Resposta
 | [🖥️ Deploy em VPS](docs/04-deploy-vps.md) | Deploy em qualquer VPS (DigitalOcean, Hostinger, etc.) |
 | [☁️ Deploy na AWS EC2](docs/05-deploy-aws-ec2.md) | Deploy passo a passo na Amazon EC2 |
 | [🔧 Troubleshooting](docs/06-troubleshooting.md) | Problemas comuns e soluções |
+| [🎨 Suporte Multimodal](docs/07-multimodal-support.md) | Processamento de imagens e áudio |
 
 ---
 

@@ -14,12 +14,16 @@ from pydantic import ValidationError
 
 from app.core.exceptions import InvalidTenantConfigError, TenantNotFoundError
 from app.tenant.models import TenantSettings
+from app.tenant.prompt_builder import build_system_prompt
 
 logger = logging.getLogger(__name__)
 
 
 def validate_tenant_config(tenant_dir: Path) -> TenantSettings:
     """Parse and validate a tenant's settings.yaml.
+
+    If the system_prompt field is empty, it is auto-generated
+    from the company configuration data.
 
     Args:
         tenant_dir: Path to the tenant's directory (must contain settings.yaml).
@@ -44,7 +48,20 @@ def validate_tenant_config(tenant_dir: Path) -> TenantSettings:
         )
 
     raw_content = _read_yaml(settings_path)
-    return _parse_settings(raw_content, settings_path)
+    settings = _parse_settings(raw_content, settings_path)
+
+    # Auto-generate system prompt from company data if not provided
+    if not settings.agent.system_prompt:
+        settings.agent.system_prompt = build_system_prompt(
+            company=settings.company,
+            agent=settings.agent,
+        )
+        logger.info(
+            "System prompt auto-generated for tenant: %s",
+            settings_path,
+        )
+
+    return settings
 
 
 def _read_yaml(path: Path) -> dict:

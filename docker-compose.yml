@@ -8,6 +8,9 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
     env_file: .env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
@@ -31,8 +34,10 @@ services:
     environment:
       - WHATSAPP_API_KEY=${WAHA_API_KEY}
       - WHATSAPP_RESTART_ALL_SESSIONS=True
+      - WAHA_DASHBOARD_ENABLED=true
       - WAHA_DASHBOARD_USERNAME=${WAHA_DASHBOARD_USERNAME}
       - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
+      - WHATSAPP_SWAGGER_ENABLED=true
       - WHATSAPP_SWAGGER_USERNAME=${WAHA_SWAGGER_USERNAME}
       - WHATSAPP_SWAGGER_PASSWORD=${WAHA_SWAGGER_PASSWORD}
       - WHATSAPP_HOOK_URL=http://app:8000/api/v1/webhook/waha

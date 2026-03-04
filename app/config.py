@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # Google Gemini AI
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_VISION_MODEL: str = "gemini-2.0-flash"
+    GEMINI_AUDIO_MODEL: str = "gemini-2.0-flash"
 
     # Redis
     REDIS_URL: str = "redis://redis:6379/0"

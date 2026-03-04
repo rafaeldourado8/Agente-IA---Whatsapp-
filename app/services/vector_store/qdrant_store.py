@@ -82,6 +82,11 @@ class QdrantVectorStore(VectorStoreProvider):
             message: The message to store.
         """
         assert self._client is not None
+        
+        # Skip storing messages with empty content
+        if not message.content or not message.content.strip():
+            logger.debug("Skipping storage of empty message")
+            return
 
         embedding = await self._get_embedding(message.content)
         point_id = str(uuid.uuid4())

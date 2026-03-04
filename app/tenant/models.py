@@ -10,6 +10,52 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+# ===================================================================
+# Company & Catalog (used for auto-generating system prompt)
+# ===================================================================
+
+
+class CatalogItem(BaseModel):
+    """A product or service in the company's catalog.
+
+    Attributes:
+        name: Product/service name.
+        description: Brief description.
+        price_range: Price indication (e.g. "A partir de R$ 1.500").
+    """
+
+    name: str
+    description: str = ""
+    price_range: str = ""
+
+
+class CompanyConfig(BaseModel):
+    """Company information used for dynamic prompt generation.
+
+    Attributes:
+        name: Company name.
+        segment: Business segment (e.g. "Tecnologia e Automação").
+        description: Brief company description.
+        website: Company website URL.
+        services: List of services offered.
+        catalog: Detailed product/service catalog with prices.
+        contact_name: Name the agent uses (e.g. "Rafael").
+    """
+
+    name: str
+    segment: str = ""
+    description: str = ""
+    website: str = ""
+    services: list[str] = Field(default_factory=list)
+    catalog: list[CatalogItem] = Field(default_factory=list)
+    contact_name: str = ""
+
+
+# ===================================================================
+# Agent Configuration
+# ===================================================================
+
+
 class AgentConfig(BaseModel):
     """Agent identity and behavior settings.
 
@@ -17,13 +63,13 @@ class AgentConfig(BaseModel):
         name: Display name of the agent.
         personality: Description of the agent's communication style.
         language: Language code for responses (e.g. pt-BR).
-        system_prompt: Full system prompt template sent to the AI provider.
+        system_prompt: Full system prompt. If empty, auto-generated from company data.
     """
 
     name: str
     personality: str = "Profissional e simpático"
     language: str = "pt-BR"
-    system_prompt: str
+    system_prompt: str = ""
 
 
 class TopicsConfig(BaseModel):
@@ -115,10 +161,9 @@ class TenantSettings(BaseModel):
     """Root schema for a tenant's settings.yaml.
 
     This is the full configuration for a single B2B client.
-    All fields have sensible defaults except ``agent`` which
-    requires at minimum a ``name`` and ``system_prompt``.
 
     Attributes:
+        company: Company information for dynamic prompt generation.
         agent: Agent identity and personality.
         topics: Allowed and blocked conversation topics.
         business_hours: Operating schedule and out-of-hours message.
@@ -127,6 +172,7 @@ class TenantSettings(BaseModel):
         webhooks: Outbound event webhook settings.
     """
 
+    company: CompanyConfig = Field(default_factory=lambda: CompanyConfig(name="Empresa"))
     agent: AgentConfig
     topics: TopicsConfig = Field(default_factory=TopicsConfig)
     business_hours: BusinessHoursConfig = Field(default_factory=BusinessHoursConfig)

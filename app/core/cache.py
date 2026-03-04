@@ -45,6 +45,11 @@ class SemanticCacheService:
         Returns:
             AgentResponse if a cache hit is found, otherwise None.
         """
+        # Skip cache for empty queries
+        if not query or not query.strip():
+            logger.debug("Skipping cache for empty query")
+            return None
+            
         cached = await self._cache.get_semantic(
             query=query,
             threshold=threshold,
@@ -87,6 +92,11 @@ class SemanticCacheService:
             ttl_hours: Cache lifetime in hours.
             tenant_id: Tenant namespace.
         """
+        # Skip storing empty queries
+        if not query or not query.strip():
+            logger.debug("Skipping cache storage for empty query")
+            return
+            
         ttl_seconds = ttl_hours * 3600
 
         await self._cache.set(

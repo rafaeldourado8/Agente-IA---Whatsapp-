@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from app.core.cache import SemanticCacheService
 from app.core.conversation import ConversationManager
 from app.core.interfaces import AIProvider, WebhookDispatcher, WhatsAppProvider
-from app.models.message import Message, MessageRole
+from app.models.message import Message, MessageRole, MessageType
 from app.models.response import AgentResponse, ResponseSource
 from app.tenant.models import TenantSettings
 
@@ -69,16 +69,18 @@ class AgentOrchestrator:
         phone: str,
         text: str,
         settings: TenantSettings,
+        message_type: MessageType = MessageType.TEXT,
+        media_url: str | None = None,
     ) -> AgentResponse:
         """Process an incoming user message through the full pipeline.
 
         Pipeline:
         1. Check business hours → return out_of_hours_message if closed
         2. Check escalation keywords → trigger escalation if matched
-        3. Try semantic cache → return cached response if hit
+        3. Try semantic cache → return cached response if hit (text only)
         4. Retrieve conversation history for context
         5. Call AI provider to generate response
-        6. Store response in cache
+        6. Store response in cache (text only)
         7. Persist messages in history
         8. Dispatch webhooks
         9. Send response via WhatsApp
@@ -89,6 +91,8 @@ class AgentOrchestrator:
             phone: User's WhatsApp phone number.
             text: User's message text.
             settings: Tenant configuration.
+            message_type: Type of message (text, image, audio).
+            media_url: URL to media file if applicable.
 
         Returns:
             The agent's response.
@@ -96,6 +100,8 @@ class AgentOrchestrator:
         user_message = Message(
             role=MessageRole.USER,
             content=text,
+            message_type=message_type,
+            media_url=media_url,
         )
 
         # Step 1: Business hours check
@@ -110,18 +116,19 @@ class AgentOrchestrator:
                 tenant_id, session_id, phone, user_message, settings
             )
 
-        # Step 3: Semantic cache lookup
-        cached = await self._cache.try_cache(
-            query=text,
-            threshold=settings.cache.semantic_threshold,
-            tenant_id=tenant_id,
-        )
-        if cached is not None:
-            await self._finalize(
-                tenant_id, session_id, phone,
-                user_message, cached, settings
+        # Step 3: Semantic cache lookup (only for text messages)
+        if message_type == MessageType.TEXT:
+            cached = await self._cache.try_cache(
+                query=text,
+                threshold=settings.cache.semantic_threshold,
+                tenant_id=tenant_id,
             )
-            return cached
+            if cached is not None:
+                await self._finalize(
+                    tenant_id, session_id, phone,
+                    user_message, cached, settings
+                )
+                return cached
 
         # Step 4: Retrieve conversation context
         history = await self._conversation.get_context(
@@ -136,13 +143,14 @@ class AgentOrchestrator:
             system_prompt=settings.agent.system_prompt,
         )
 
-        # Step 6: Store in cache
-        await self._cache.store(
-            query=text,
-            response=response.content,
-            ttl_hours=settings.cache.ttl_hours,
-            tenant_id=tenant_id,
-        )
+        # Step 6: Store in cache (only for text messages)
+        if message_type == MessageType.TEXT:
+            await self._cache.store(
+                query=text,
+                response=response.content,
+                ttl_hours=settings.cache.ttl_hours,
+                tenant_id=tenant_id,
+            )
 
         # Steps 7–9: Finalize
         await self._finalize(

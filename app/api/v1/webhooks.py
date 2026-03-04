@@ -4,6 +4,11 @@ Receives incoming messages from the WAHA webhook,
 identifies the tenant, and processes the message through
 the agent orchestrator.
 
+Features:
+- Message deduplication (prevents WAHA retry storms)
+- Background processing (returns 200 immediately)
+- Per-session locks (prevents message interleaving)
+
 Supports both:
 - POST /webhook/waha — native WAHA event payload (production)
 - POST /webhook/message — simplified schema (testing/manual)
@@ -11,7 +16,10 @@ Supports both:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+from collections import OrderedDict
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -21,12 +29,53 @@ from app.core.exceptions import (
     AgentException,
     TenantNotFoundError,
 )
+from app.models.message import MessageType
 from app.models.webhook import WebhookEvent, WebhookPayload
 from app.tenant.loader import load_tenant
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["webhooks"])
+
+# ------------------------------------------------------------------
+# Deduplication cache (in-memory, TTL-based)
+# ------------------------------------------------------------------
+_DEDUP_TTL_SECONDS = 120  # Ignore duplicates within 2 minutes
+_DEDUP_MAX_SIZE = 5000     # Max tracked message IDs
+_processed_ids: OrderedDict[str, float] = OrderedDict()
+
+# Per-session locks to prevent message interleaving
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _is_duplicate(message_id: str) -> bool:
+    """Check if a message ID was already processed recently."""
+    now = time.monotonic()
+
+    # Clean expired entries
+    expired = [
+        mid for mid, ts in _processed_ids.items()
+        if now - ts > _DEDUP_TTL_SECONDS
+    ]
+    for mid in expired:
+        _processed_ids.pop(mid, None)
+
+    # Evict oldest if too many
+    while len(_processed_ids) >= _DEDUP_MAX_SIZE:
+        _processed_ids.popitem(last=False)
+
+    if message_id in _processed_ids:
+        return True
+
+    _processed_ids[message_id] = now
+    return False
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """Get or create a per-session lock."""
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
 
 
 class IncomingMessage(BaseModel):
@@ -70,31 +119,15 @@ class MessageResponse(BaseModel):
     "/webhook/waha",
     response_model=MessageResponse,
     summary="Receive WAHA native webhook event",
-    response_description="Agent's response to the incoming message",
+    response_description="Acknowledged — processing happens in background",
 )
 async def receive_waha_event(
     request: Request,
 ) -> MessageResponse:
     """Process an incoming WAHA webhook event.
 
-    WAHA sends events in the format::
-
-        {
-            "event": "message",
-            "session": "default",
-            "payload": {
-                "from": "5511999999999@c.us",
-                "body": "Hello!",
-                "fromMe": false,
-                ...
-            }
-        }
-
-    Only ``message`` events with ``fromMe=false`` are processed.
-    Other events are acknowledged with a 200 but not processed.
-
-    Returns:
-        The agent's response with metadata.
+    Returns 200 immediately and processes the message in the background.
+    Duplicate messages (WAHA retries) are detected and ignored.
     """
     body = await request.json()
     event = body.get("event", "")
@@ -109,32 +142,80 @@ async def receive_waha_event(
 
     # Only process incoming messages (not our own)
     if event != "message":
-        logger.debug("Ignoring non-message event: %s", event)
         return MessageResponse(status="ignored", response="event not handled")
 
     if payload_data.get("fromMe", False):
-        logger.debug("Ignoring own message (fromMe=true)")
         return MessageResponse(status="ignored", response="own message")
 
-    # Extract phone number — WAHA sends "5511999999999@c.us"
+    # Deduplication — extract message ID
+    message_id = payload_data.get("id", "")
+    if not message_id:
+        message_id = (
+            payload_data.get("_data", {})
+            .get("id", {})
+            .get("_serialized", "")
+        )
+
+    if message_id and _is_duplicate(message_id):
+        logger.info("Duplicate message ignored: id=%s", message_id)
+        return MessageResponse(status="ignored", response="duplicate")
+
+    # Extract phone number
     raw_from = payload_data.get("from", "")
-    phone = raw_from.replace("@c.us", "").replace("@s.whatsapp.net", "")
+    phone = raw_from.split("@")[0] if "@" in raw_from else raw_from
     message_text = payload_data.get("body", "")
 
-    if not phone or not message_text:
-        logger.warning("Empty phone or message body, skipping")
-        return MessageResponse(status="ignored", response="empty message")
+    logger.info(
+        "Processing message: id=%s type=%s hasMedia=%s from=%s",
+        message_id[:20] if message_id else "?",
+        payload_data.get("_data", {}).get("type") or payload_data.get("type"),
+        payload_data.get("hasMedia"),
+        raw_from,
+    )
 
-    # Map session name → tenant_id
+    # Detect message type and media
+    message_type = MessageType.TEXT
+    media_url = None
+    msg_type = (
+        payload_data.get("_data", {}).get("type")
+        or payload_data.get("type", "")
+    )
+
+    if payload_data.get("hasMedia"):
+        if msg_type == "image":
+            message_type = MessageType.IMAGE
+            media_url = (
+                payload_data.get("media", {}).get("url")
+                or payload_data.get("mediaUrl")
+            )
+            message_text = payload_data.get("caption", "")
+        elif msg_type in ["audio", "ptt"]:
+            message_type = MessageType.AUDIO
+            media_url = (
+                payload_data.get("media", {}).get("url")
+                or payload_data.get("mediaUrl")
+            )
+            message_text = "[Áudio recebido]"
+
+    if not phone:
+        return MessageResponse(status="ignored", response="empty phone")
+
     tenant_id = session
     session_id = f"{phone}_{tenant_id}"
 
-    return await _process_incoming(
-        tenant_id=tenant_id,
-        phone=phone,
-        message=message_text,
-        session_id=session_id,
+    # Process in background — return 200 immediately to WAHA
+    asyncio.create_task(
+        _process_in_background(
+            tenant_id=tenant_id,
+            phone=raw_from,
+            message=message_text,
+            session_id=session_id,
+            message_type=message_type,
+            media_url=media_url,
+        )
     )
+
+    return MessageResponse(status="accepted", response="processing")
 
 
 # ------------------------------------------------------------------
@@ -152,23 +233,7 @@ async def receive_message(
     payload: IncomingMessage,
     request: Request,
 ) -> MessageResponse:
-    """Process an incoming WhatsApp message.
-
-    The ``instance`` field maps to the tenant_id. The message
-    is processed through the full agent pipeline (cache → AI →
-    history → webhook → response).
-
-    Args:
-        payload: Incoming message data from WAHA.
-        request: FastAPI request object.
-
-    Returns:
-        The agent's response with metadata.
-
-    Raises:
-        HTTPException 404: If the tenant is not found.
-        HTTPException 500: If processing fails.
-    """
+    """Process an incoming WhatsApp message (synchronous, for testing)."""
     tenant_id = payload.instance
     session_id = payload.session_id or f"{payload.phone}_{tenant_id}"
 
@@ -181,8 +246,36 @@ async def receive_message(
 
 
 # ------------------------------------------------------------------
-# Shared processing logic
+# Background + shared processing logic
 # ------------------------------------------------------------------
+
+
+async def _process_in_background(
+    tenant_id: str,
+    phone: str,
+    message: str,
+    session_id: str,
+    message_type: MessageType = MessageType.TEXT,
+    media_url: str | None = None,
+) -> None:
+    """Process a message in background with per-session locking."""
+    lock = _get_session_lock(session_id)
+
+    async with lock:
+        try:
+            await _process_incoming(
+                tenant_id=tenant_id,
+                phone=phone,
+                message=message,
+                session_id=session_id,
+                message_type=message_type,
+                media_url=media_url,
+            )
+        except Exception as exc:
+            logger.error(
+                "Background processing failed: session=%s error=%s",
+                session_id, exc,
+            )
 
 
 async def _process_incoming(
@@ -190,6 +283,8 @@ async def _process_incoming(
     phone: str,
     message: str,
     session_id: str,
+    message_type: MessageType = MessageType.TEXT,
+    media_url: str | None = None,
 ) -> MessageResponse:
     """Common handler for both WAHA and simplified webhook endpoints."""
     # Persist received webhook
@@ -223,6 +318,8 @@ async def _process_incoming(
             phone=phone,
             text=message,
             settings=settings,
+            message_type=message_type,
+            media_url=media_url,
         )
 
         logger.info(
