@@ -1,0 +1,17 @@
+# =============================================================================
+# Roteamento de Números para Tenants
+# =============================================================================
+# Como a versão gratuita do WAHA só permite 1 sessão (default),
+# usamos este arquivo para rotear números diferentes para tenants diferentes.
+#
+# Formato: "número_whatsapp": "tenant_id"
+# =============================================================================
+
+# Número da OPS Solutions
+"5511999999999": "default"
+
+# Número da MAB Energia Solar
+"5511988888888": "mab-energia-solar"
+
+# Adicione mais números conforme necessário
+# "5511977777777": "outro-cliente"

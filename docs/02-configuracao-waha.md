@@ -105,42 +105,6 @@ O status deve ser `"WORKING"`. Se mostrar `"SCAN_QR_CODE"`, escaneie o QR novame
 
 ---
 
-## Passo 4 (Opcional): Conexão Remota (Sem QR Code)
-
-Se você precisa conectar o WhatsApp de um cliente que está longe (não pode escanear o QR Code da sua tela), você pode gerar um **Código de Pareamento** de 8 dígitos.
-
-**Como funciona:**
-1. Você solicita um código para o número do cliente
-2. Você envia o código para ele (ex: pelo seu próprio WhatsApp)
-3. Ele digita o código no celular dele
-
-**Gerando o código via API:**
-
-Altere `SEU_NUMERO_AQUI` para o celular do seu cliente (ex: `5511999999999`).
-
-**Windows (PowerShell):**
-```powershell
-$headers = @{ "X-Api-Key" = "sua-waha-api-key" }
-$body = @{ phoneNumber = "SEU_NUMERO_AQUI" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:3000/api/sessions/default/auth/request-code" -Method POST -Headers $headers -Body $body -ContentType "application/json"
-```
-
-**Linux/macOS:**
-```bash
-curl -X POST http://localhost:3000/api/sessions/default/auth/request-code \
-  -H "X-Api-Key: sua-waha-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"phoneNumber": "SEU_NUMERO_AQUI"}'
-```
-
-**O que o cliente deve fazer:**
-1. Abrir o WhatsApp
-2. **Aparelhos Conectados** > **Conectar um Aparelho**
-3. Clicar em **"Conectar com número de telefone em vez disso"** (na tela da câmera)
-4. Digitar o código de 8 dígitos que você mandou.
-
----
-
 ## Como o Webhook Funciona
 
 O sistema é configurado automaticamente para que:
@@ -177,37 +141,25 @@ Isso significa:
 | `loja_xyz` | `tenants/loja_xyz/` | ✅ Funciona |
 | `minha_sessao` | *(sem pasta)* | ❌ Erro 404 |
 
-### Arquitetura de Múltiplos Números (Multi-tenant)
+### Multi-tenant (vários clientes)
 
-**Sim, esta arquitetura suporta dezenas de números conectados simultaneamente!**  
-O próprio design `Multi-tenant` foi feito especificamente para que uma única instância (1 Docker) atenda vários clientes diferentes ao mesmo tempo, mantendo tudo isolado.
-
-Para adicionar um novo cliente com um **número novo**:
+Para atender vários clientes com números diferentes:
 
 1. Crie uma pasta para cada cliente em `tenants/`:
    ```
    tenants/
    ├── clinica_abc/
-   │   └── settings.yaml    ← Configurações e IA da Clínica
+   │   └── settings.yaml
    ├── loja_xyz/
-   │   └── settings.yaml    ← Configurações e IA da Loja
+   │   └── settings.yaml
    └── escritorio_def/
-       └── settings.yaml    ← Configurações e IA do Escritório
+       └── settings.yaml
    ```
 
-2. Crie **novas sessões WAHA** (uma para cada cliente):
-   - Inicie a sessão `clinica_abc` → Leia o QR Code com o número da clínica
-   - Inicie a sessão `loja_xyz` → Leia o QR Code com o número da loja
-   - Inicie a sessão `escritorio_def` → Leia o QR Code com o número do escritório
-
-3. **Como o isolamento funciona:**
-   - Quando chega mensagem no número da loja, o webhook envia `session="loja_xyz"`.
-   - A Aplicação (FastAPI) carrega *apenas* o arquivo `tenants/loja_xyz/settings.yaml`.
-   - A memória da conversa e o cache daquela IA ficam isolados em coleções separadas (usando o tenant-id).
-   - A IA responde via API WAHA enviando de volta para a sessão `loja_xyz`.
-
-> [!TIP]
-> Você roda a aplicação apenas 1 vez (não precisa de 1 docker para cada cliente). Com **1 servidor de 2GB ou 4GB RAM** (`t3.medium` na AWS), você pode rodar **10, 20 ou 50 números** simultaneamente, bastando criar mais pastas e sessões.
+2. Crie sessões WAHA com os mesmos nomes:
+   - Sessão `clinica_abc` → conecte o número da clínica
+   - Sessão `loja_xyz` → conecte o número da loja
+   - Sessão `escritorio_def` → conecte o número do escritório
 
 ---
 
