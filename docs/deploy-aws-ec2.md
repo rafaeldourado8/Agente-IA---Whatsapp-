@@ -1,19 +1,19 @@
-# ☁️ Deploy na AWS EC2 — Free Tier
+# ☁️ Deploy na AWS EC2
 
-> Guia para subir o agente em uma instância EC2 gratuita da Amazon.
+> Guia para subir o agente em uma instância EC2 na Amazon.
 
 ---
 
-## ⚠️ Aviso sobre o Free Tier
+## Escolha da Instância
 
-| Recurso | Free Tier | O que precisamos | Funciona? |
-|---------|-----------|-----------------|:---------:|
-| **Instância** | t2.micro (1 vCPU, 1GB RAM) | ~1.2GB no pico | ⚡ Apertado |
-| **Disco** | 30GB EBS gp2 | ~5GB | ✅ Sobra |
-| **Rede** | 15GB/mês outbound | Pouco tráfego | ✅ OK |
-| **Duração** | 12 meses grátis | - | ✅ |
+| Instância | vCPU | RAM | Preço/mês | Recomendação |
+|-----------|:----:|:---:|:---------:|-------------|
+| t2.micro | 1 | 1GB | Grátis (12 meses) | ⚡ Funciona com swap, apenas para testes |
+| t3.small | 2 | 2GB | ~$15 | ✅ Mínimo para produção leve |
+| **c7i-flex.large** | **2** | **4GB** | **~$45** | **🏆 Recomendada — roda tudo confortável** |
+| t3.medium | 2 | 4GB | ~$30 | ✅ Boa alternativa |
 
-> 💡 **1GB de RAM é apertado** para rodar App + Redis + Qdrant + Evolution API. Vamos adicionar **2GB de swap** para funcionar. Para produção real com volume, recomendamos **t3.small** (2GB RAM, ~$15/mês).
+> 💡 **Testado em c7i-flex.large (4GB RAM)**: roda App + Redis + Qdrant + Evolution API + Postgres confortavelmente. Para t2.micro (1GB), é necessário **2GB de swap** e limites de memória nos containers.
 
 ---
 
@@ -122,17 +122,26 @@ cd /opt/whatsapp-agent
 ### 3.2 Instalar Evolution API
 
 ```bash
-mkdir -p /opt/evolution-api
-cat <<'EOF' > /opt/evolution-api/docker-compose.yml
+sudo mkdir -p /opt/evolution-api
+sudo chown -R $USER:$USER /opt/evolution-api
+nano /opt/evolution-api/docker-compose.yml
+```
+
+Cole o conteúdo abaixo:
+
+```yaml
 services:
   evolution-api:
     image: atendai/evolution-api:v2.2.3
     ports:
       - "8080:8080"
     environment:
-      - AUTHENTICATION_API_KEY=MINHA_CHAVE_EVOLUTION_123
+      - AUTHENTICATION_API_KEY=MinhaChaveEvolution123
       - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://postgres:evo_pg_pass@postgres:5432/evolution
+      - DATABASE_CONNECTION_URI=postgresql://postgres:EvoPgSenha2026Forte@postgres:5432/evolution
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis-evo:6379
+      - CACHE_LOCAL_ENABLED=false
       - WEBHOOK_GLOBAL_URL=http://172.17.0.1:8000/api/v1/webhook/message
       - WEBHOOK_GLOBAL_ENABLED=true
       - WEBHOOK_EVENTS=MESSAGES_UPSERT
@@ -140,33 +149,31 @@ services:
       - evolution_data:/evolution/instances
     depends_on:
       - postgres
+      - redis-evo
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
 
   postgres:
     image: postgres:15-alpine
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=evo_pg_pass
+      - POSTGRES_PASSWORD=EvoPgSenha2026Forte
       - POSTGRES_DB=evolution
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 128M
+
+  redis-evo:
+    image: redis:7-alpine
+    restart: unless-stopped
 
 volumes:
   evolution_data:
   postgres_data:
-EOF
 ```
 
-> ⚠️ Na AWS EC2, **não existe `host.docker.internal`**. Usamos `172.17.0.1` (gateway padrão do Docker bridge) para o app se comunicar com a Evolution API.
+> ⚠️ **Importante:** a senha do Postgres NÃO pode conter `@`, `#`, `!`, `&` — use apenas letras e números.
+
+> ⚠️ Na AWS EC2 (Linux), use `172.17.0.1` para comunicação entre containers de docker-composes diferentes. O `host.docker.internal` só funciona no Docker Desktop (Windows/Mac).
 
 ```bash
 cd /opt/evolution-api
@@ -308,17 +315,18 @@ free -h
 df -h
 ```
 
-**Uso esperado no t2.micro:**
+**Uso esperado:**
 
-| Container | RAM |
-|-----------|-----|
-| App (FastAPI) | ~150MB |
-| Redis | ~50MB |
-| Qdrant | ~200–350MB |
-| Evolution API | ~200MB |
-| Postgres (Evolution) | ~80MB |
-| **Total** | **~700MB–900MB** |
-| Swap disponível | 2GB |
+| Container | RAM (t2.micro) | RAM (c7i-flex.large) |
+|-----------|:--------------:|:--------------------:|
+| App (FastAPI) | ~150MB | ~200MB |
+| Redis (agente) | ~50MB | ~80MB |
+| Qdrant | ~200–350MB | ~400MB |
+| Evolution API | ~200MB | ~250MB |
+| Redis (Evolution) | ~30MB | ~50MB |
+| Postgres (Evolution) | ~80MB | ~100MB |
+| **Total** | **~750MB–900MB** | **~1.1GB** |
+| Folga | Swap 2GB | ~2.9GB livre |
 
 ---
 

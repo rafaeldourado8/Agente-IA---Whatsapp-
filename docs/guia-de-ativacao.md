@@ -1,71 +1,143 @@
-# 🚀 Guia de Ativação — WhatsApp B2B AI Agent
+  # 🚀 Guia de Ativação — Seu Agente de IA no WhatsApp
 
-> Guia passo a passo para instalar, configurar e ativar o agente de IA no WhatsApp do seu negócio.
+> Este guia vai te levar do zero até o seu agente funcionando no WhatsApp em **7 passos simples**.
+> Tempo estimado: **30–45 minutos**.
+
+---
+
+## 📖 O que é este produto?
+
+É um **robô de atendimento** que responde automaticamente as mensagens do WhatsApp da sua empresa. Ele usa inteligência artificial (Google Gemini) para entender o que o cliente pergunta e dar respostas personalizadas com base nos dados que você configura.
+
+**Exemplo prático:**
+- 👤 Cliente: *"Qual o horário de funcionamento?"*
+- 🤖 Agente: *"Olá! Funcionamos de segunda a sexta, das 8h às 18h, e sábados das 9h às 13h. Posso ajudar com mais alguma coisa?"*
+
+O agente funciona 24 horas — fora do horário comercial, ele avisa que está fechado e pede para o cliente deixar uma mensagem.
 
 ---
 
 ## 📋 O que você vai precisar
 
-| Item | Onde conseguir |
-|------|---------------|
-| **Servidor VPS** | DigitalOcean, Contabo, Hetzner (mínimo 2GB RAM, Ubuntu 22.04) |
-| **Domínio** (opcional) | Para HTTPS — qualquer registrador (Namecheap, Cloudflare) |
-| **Chave da API do Google Gemini** | [Google AI Studio](https://aistudio.google.com/apikey) |
-| **Número de WhatsApp** | Um chip com WhatsApp ativo (pode ser número novo) |
-| **Acesso SSH ao servidor** | Terminal ou PuTTY |
+Antes de começar, tenha em mãos:
+
+| Item | O que é | Como conseguir |
+|------|---------|---------------|
+| 🖥️ **Servidor** | Um computador na nuvem que fica ligado 24h | Contratar na AWS, DigitalOcean ou similar (~R$75–225/mês) |
+| 📱 **Chip de celular** | Um número de WhatsApp para o agente usar | Comprar um chip pré-pago normal |
+| 🔑 **Chave do Google** | Permissão para usar a inteligência artificial | Gratuito — vamos criar juntos no Passo 3 |
+
+> 💡 **O que é um servidor?** Pense nele como um computador que fica ligado o tempo todo na internet. Ao invés de deixar o seu computador pessoal ligado, você "aluga" um na nuvem. É como alugar um escritório virtual para o robô trabalhar.
 
 ---
 
-## Parte 1 — Preparar o Servidor
+## Passo 1 — Contratar e Acessar o Servidor
 
-### 1.1 Instalar Docker
+### O que vamos fazer?
+Alugar um computador na nuvem e conectar nele remotamente.
 
-Conecte no servidor via SSH e execute:
+### Como fazer (AWS):
+
+1. Acesse [console.aws.amazon.com](https://console.aws.amazon.com) e crie uma conta (se ainda não tem)
+2. No menu, vá em **EC2** → **Launch Instance**
+3. Configure:
+   - **Nome:** `whatsapp-agent`
+   - **Sistema operacional:** Ubuntu Server 24.04 LTS
+   - **Tipo:** `t3.small` (2GB RAM) ou `c7i-flex.large` (4GB RAM, recomendado)
+   - **Key pair:** Crie uma nova (será um arquivo `.pem` — **guarde bem, você vai precisar!**)
+   - **Disco:** 30 GB
+4. Em **Security Group** (firewall), libere estas portas:
+
+| Porta | Para que serve |
+|:-----:|---------------|
+| 22 | Você acessar o servidor remotamente |
+| 8000 | O agente de IA funcionar |
+| 8080 | Configurar a conexão com o WhatsApp (apenas seu IP!) |
+
+5. Clique em **Launch Instance**
+
+### Conectar no servidor:
+
+No terminal do seu computador (ou PuTTY no Windows):
 
 ```bash
-# Atualizar pacotes
+ssh -i whatsapp-agent-key.pem ubuntu@IP_DO_SEU_SERVIDOR
+```
+
+> 💡 **O que é SSH?** É um jeito seguro de "entrar" no servidor pela internet, como se você estivesse sentado na frente dele. Tudo que você digitar será executado lá.
+
+---
+
+## Passo 2 — Instalar o Docker
+
+### O que vamos fazer?
+Instalar o programa que vai rodar todos os serviços do agente de forma organizada.
+
+### Por que Docker?
+O Docker é como uma "caixinha" que embala o agente e tudo que ele precisa. Ao invés de instalar dezenas de programas, instalamos só o Docker e ele cuida do resto.
+
+### Como fazer:
+
+Cole estes comandos no terminal (um de cada vez):
+
+```bash
+# Atualizar o sistema
 sudo apt update && sudo apt upgrade -y
 
-# Instalar Docker
+# Instalar o Docker
 curl -fsSL https://get.docker.com | sudo sh
 
-# Adicionar seu usuário ao grupo docker (para não usar sudo)
-sudo usermod -aG docker $USER
-
-# Aplicar a mudança (ou saia e entre novamente via SSH)
+# Permitir usar Docker sem 'sudo'
+sudo usermod -aG docker ubuntu
 newgrp docker
 
-# Verificar instalação
+# Verificar se instalou corretamente
 docker --version
-docker compose version
 ```
 
-> ⚠️ **Importante:** o Docker Compose v2 já vem junto com o Docker Engine. O comando é `docker compose` (com espaço, não hífen).
+Deve aparecer algo como `Docker version 29.x.x` ✅
 
-### 1.2 Baixar o Projeto
-
-```bash
-# Clonar o repositório
-git clone <URL_DO_REPOSITORIO> /opt/whatsapp-agent
-cd /opt/whatsapp-agent
-```
+> ⚠️ **Se der algum erro**, tente sair do servidor (`exit`) e entrar novamente (`ssh ...`).
 
 ---
 
-## Parte 2 — Configurar a Evolution API
+## Passo 3 — Criar Chave do Google Gemini (Gratuito)
 
-A Evolution API é o serviço que conecta o agente ao WhatsApp. Ela precisa rodar como um container separado.
+### O que vamos fazer?
+Pegar a "chave de acesso" para o agente poder usar a inteligência artificial do Google.
 
-### 2.1 Criar o Docker Compose da Evolution API
+### Por que precisa disso?
+O Google oferece um serviço de IA chamado Gemini. Para usar, você precisa de uma chave que identifica a sua conta. É gratuito para volumes moderados.
 
-Crie um arquivo para a Evolution API (fora do projeto do agente):
+### Como fazer:
+
+1. Acesse [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Faça login com qualquer conta Google (Gmail)
+3. Clique em **"Create API Key"**
+4. **Copie a chave** que aparece (começa com `AIza...`)
+5. **Guarde essa chave** — você vai usar no Passo 5
+
+> ⚠️ **Nunca compartilhe esta chave** com ninguém. Ela é como uma senha.
+
+---
+
+## Passo 4 — Conectar o WhatsApp
+
+### O que vamos fazer?
+Instalar o serviço que conecta o agente ao WhatsApp e escanear o QR Code com o celular.
+
+### Como funciona?
+Usamos um programa chamado **Evolution API** (gratuito e open-source) que funciona igual ao WhatsApp Web — ele conecta um número de WhatsApp ao servidor. Não precisa criar conta, é só instalar.
+
+### 4.1 — Criar a pasta e o arquivo de configuração:
 
 ```bash
-mkdir -p /opt/evolution-api
+sudo mkdir -p /opt/evolution-api
+sudo chown -R ubuntu:ubuntu /opt/evolution-api
 nano /opt/evolution-api/docker-compose.yml
 ```
 
-Cole o conteúdo abaixo:
+O comando `nano` vai abrir um editor de texto. Cole este conteúdo:
 
 ```yaml
 services:
@@ -74,32 +146,34 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Autenticação
-      - AUTHENTICATION_API_KEY=SUA_CHAVE_SECRETA_AQUI
-      
-      # Banco de dados (SQLite para simplicidade)
+      - AUTHENTICATION_API_KEY=MinhaChaveEvolution123
       - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://postgres:senha_postgres@postgres:5432/evolution
-      
-      # Webhook — apontar para o agente
-      - WEBHOOK_GLOBAL_URL=http://host.docker.internal:8000/api/v1/webhook/message
+      - DATABASE_CONNECTION_URI=postgresql://postgres:EvoPgSenha2026Forte@postgres:5432/evolution
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis-evo:6379
+      - CACHE_LOCAL_ENABLED=false
+      - WEBHOOK_GLOBAL_URL=http://172.17.0.1:8000/api/v1/webhook/message
       - WEBHOOK_GLOBAL_ENABLED=true
       - WEBHOOK_EVENTS=MESSAGES_UPSERT
-      
     volumes:
       - evolution_data:/evolution/instances
     depends_on:
       - postgres
+      - redis-evo
     restart: unless-stopped
 
   postgres:
     image: postgres:15-alpine
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=senha_postgres
+      - POSTGRES_PASSWORD=EvoPgSenha2026Forte
       - POSTGRES_DB=evolution
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis-evo:
+    image: redis:7-alpine
     restart: unless-stopped
 
 volumes:
@@ -107,212 +181,290 @@ volumes:
   postgres_data:
 ```
 
-> 🔑 **Atenção:** troque `SUA_CHAVE_SECRETA_AQUI` por uma chave forte. Anote-a — você vai usar no `.env` do agente.
+**Para salvar:** aperte `Ctrl+O` → `Enter` → `Ctrl+X`
 
-### 2.2 Iniciar a Evolution API
+> ⚠️ **Sobre as senhas:**
+> - Troque `MinhaChaveEvolution123` por uma chave inventada por você (anote!)
+> - Troque `EvoPgSenha2026Forte` por uma senha inventada por você (anote!)  
+> - **NÃO use** caracteres especiais como `@`, `#`, `!`, `&` nas senhas — use apenas letras e números
+
+### 4.2 — Iniciar a Evolution API:
 
 ```bash
 cd /opt/evolution-api
 docker compose up -d
 ```
 
-Verifique se está rodando:
+Aguarde ~1 minuto. Verifique se está rodando:
 
 ```bash
-curl http://localhost:8080/
-# Deve retornar uma resposta JSON
+docker compose logs --tail 20
 ```
 
-### 2.3 Criar uma Instância e Conectar o WhatsApp
+Deve aparecer `HTTP - ON: 8080` sem erros repetidos ✅
 
-A Evolution API gerencia "instâncias" — cada instância é uma conexão com um número de WhatsApp.
+### 4.3 — Criar conexão com o WhatsApp:
 
 ```bash
-# Criar instância chamada "minha_empresa"
 curl -X POST http://localhost:8080/instance/create \
-  -H "apikey: SUA_CHAVE_SECRETA_AQUI" \
+  -H "apikey: MinhaChaveEvolution123" \
   -H "Content-Type: application/json" \
-  -d '{
-    "instanceName": "minha_empresa",
-    "integration": "WHATSAPP-BAILEYS",
-    "qrcode": true
-  }'
+  -d '{"instanceName": "minha_empresa", "integration": "WHATSAPP-BAILEYS", "qrcode": true}'
 ```
 
-A resposta conterá um **QR Code** (em base64). Para visualizar:
+> 📌 **`minha_empresa`** é o identificador do seu negócio. Troque pelo nome da sua empresa (sem espaços, sem acentos). Ex: `padaria_silva`, `clinica_saude`, `loja_roupas`
 
-```bash
-# Gerar QR Code para conectar
-curl -X GET http://localhost:8080/instance/connect/minha_empresa \
-  -H "apikey: SUA_CHAVE_SECRETA_AQUI"
+### 4.4 — Escanear o QR Code:
+
+Abra no navegador do seu computador:
+
+```
+http://IP_DO_SEU_SERVIDOR:8080/manager
 ```
 
-> 📱 **Escaneie o QR Code com o WhatsApp do número que será usado pelo agente:**
-> 1. Abra o WhatsApp no celular
-> 2. Vá em **Configurações → Dispositivos Conectados → Conectar Dispositivo**
-> 3. Escaneie o QR Code retornado pela API
+Você verá a instância que acabou de criar. Clique nela para ver o **QR Code**.
 
-### 2.4 Verificar Conexão
+No celular com o número que será do agente:
+1. Abra o **WhatsApp**
+2. Vá em **⋮ → Dispositivos Conectados → Conectar Dispositivo**
+3. **Escaneie o QR Code** que aparece no navegador
+
+### 4.5 — Verificar se conectou:
 
 ```bash
 curl http://localhost:8080/instance/connectionState/minha_empresa \
-  -H "apikey: SUA_CHAVE_SECRETA_AQUI"
+  -H "apikey: MinhaChaveEvolution123"
 ```
 
-Deve retornar `"state": "open"`.
+Se aparecer `"state": "open"` → WhatsApp conectado! ✅
+
+> 💡 **Dica:** o WhatsApp continua funcionando normalmente no celular. A Evolution API funciona como mais um "dispositivo conectado", igual ao WhatsApp Web.
 
 ---
 
-## Parte 3 — Obter a Chave do Google Gemini
+## Passo 5 — Configurar o Agente
 
-### 3.1 Criar Chave de API
+### O que vamos fazer?
+Baixar o código do agente e preencher as configurações com seus dados.
 
-1. Acesse [Google AI Studio](https://aistudio.google.com/apikey)
-2. Faça login com sua conta Google
-3. Clique em **"Create API Key"**
-4. Copie a chave gerada (começa com `AIza...`)
-
-> 💡 A API do Gemini tem um **plano gratuito** generoso para começar. Para uso em produção com volume alto, considere o plano pago.
-
----
-
-## Parte 4 — Configurar o Agente
-
-### 4.1 Criar o Arquivo de Ambiente
+### 5.1 — Baixar o projeto:
 
 ```bash
+sudo mkdir -p /opt/whatsapp-agent
+sudo chown -R ubuntu:ubuntu /opt/whatsapp-agent
+git clone <URL_DO_REPOSITORIO> /opt/whatsapp-agent
 cd /opt/whatsapp-agent
+```
+
+### 5.2 — Criar o arquivo de configuração geral:
+
+```bash
 cp .env.example .env
 nano .env
 ```
 
-Preencha com seus dados reais:
+Preencha com seus dados (troque os valores em MAIÚSCULAS):
 
 ```ini
-# Porta do agente (padrão 8000)
+# Configuração geral
 APP_PORT=8000
 LOG_LEVEL=INFO
 TENANT_CONFIG_DIR=./tenants
 
-# Chave do Google Gemini (obtida no Passo 3)
-GEMINI_API_KEY=AIzaSy_SUA_CHAVE_AQUI
+# Google Gemini (chave do Passo 3)
+GEMINI_API_KEY=COLE_SUA_CHAVE_AQUI
 GEMINI_MODEL=gemini-2.0-flash
 
-# Redis (senha forte — invente uma)
+# Banco de cache (pode manter assim)
 REDIS_URL=redis://redis:6379/0
-REDIS_PASSWORD=minha_senha_redis_forte_123
+REDIS_PASSWORD=MinhasenhaRedisForte123
 
-# Qdrant (manter padrão)
+# Banco de memória (pode manter assim)
 QDRANT_URL=http://qdrant:6333
 QDRANT_COLLECTION_NAME=conversations
 
-# Evolution API (mesma chave do Passo 2)
-EVOLUTION_API_URL=http://host.docker.internal:8080
-EVOLUTION_API_KEY=SUA_CHAVE_SECRETA_AQUI
+# Evolution API (mesma chave do Passo 4)
+EVOLUTION_API_URL=http://172.17.0.1:8080
+EVOLUTION_API_KEY=MinhaChaveEvolution123
 
-# Secret para webhooks (invente uma)
-WEBHOOK_SECRET=meu_webhook_secret_seguro
+# Segurança dos webhooks
+WEBHOOK_SECRET=MeuWebhookSecreto456
 ```
 
-### 4.2 Criar a Configuração do Seu Tenant
+**Salve:** `Ctrl+O` → `Enter` → `Ctrl+X`
 
-O "tenant" é a configuração do agente para o seu negócio. O nome da pasta é o **mesmo nome da instância** criada na Evolution API.
+> 💡 **O que cada coisa faz:**
+> - **GEMINI_API_KEY** → chave para o agente "pensar" (Google Gemini)
+> - **REDIS** → memória rápida que evita o agente pensar a mesma coisa duas vezes (cache)
+> - **QDRANT** → onde o agente guarda o histórico das conversas
+> - **EVOLUTION_API** → conexão com o WhatsApp
+
+### 5.3 — Configurar o perfil do agente:
+
+Esta é a parte mais importante! Aqui você define **quem** o agente é e **o que** ele sabe.
 
 ```bash
-# Copiar o template
 cp -r tenants/example_tenant tenants/minha_empresa
 nano tenants/minha_empresa/settings.yaml
 ```
 
-Edite o arquivo de configuração:
+> ⚠️ O nome da pasta (`minha_empresa`) deve ser **exatamente igual** ao nome da instância criada no Passo 4.
+
+Edite o arquivo com os dados do seu negócio:
 
 ```yaml
+# ===================================================
+# IDENTIDADE DO AGENTE
+# Aqui você define a personalidade e o conhecimento
+# ===================================================
 agent:
-  name: "Assistente da Minha Empresa"
-  personality: "Simpático, objetivo e profissional"
+  # Nome que aparece como remetente
+  name: "Assistente Virtual da Minha Empresa"
+  
+  # Como o agente se comporta
+  personality: "Simpático, prestativo e profissional"
+  
+  # Idioma
   language: "pt-BR"
+  
+  # INSTRUÇÕES DO AGENTE — a parte mais importante!
+  # Tudo que está aqui o agente vai "saber" e seguir.
+  # Quanto mais detalhado, melhor ele responde.
   system_prompt: |
-    Você é o Assistente da Minha Empresa.
-    Responda sempre em português, de forma simpática e profissional.
+    Você é o assistente virtual da Minha Empresa.
+    Sempre responda em português, de forma simpática e profissional.
     
-    Sobre a empresa:
+    SOBRE A EMPRESA:
     - Nome: Minha Empresa Ltda
-    - Produtos: [descreva seus produtos aqui]
-    - Endereço: [seu endereço]
-    - Telefone: [seu telefone]
+    - Ramo: [descreva o ramo do negócio]
+    - Endereço: [endereço completo]
+    - Telefone fixo: [número]
+    - E-mail: [email]
+    - Site: [url]
     
-    Regras:
-    - Nunca invente informações que você não sabe
-    - Se não souber responder, peça o contato do cliente
-    - Seja conciso (máximo 3 parágrafos)
+    PRODUTOS/SERVIÇOS:
+    - [Liste cada produto/serviço com preço]
+    - [Quanto mais detalhes, melhor]
+    
+    POLÍTICAS:
+    - Trocas: [política de troca]
+    - Pagamento: [formas aceitas]
+    - Entrega: [prazos e condições]
+    
+    REGRAS DE COMPORTAMENTO:
+    - Nunca invente informações que não estão acima
+    - Se não souber responder, diga: "Vou verificar com nossa equipe e retorno em breve!"
+    - Seja conciso (máximo 3 parágrafos por resposta)
+    - Use emojis com moderação (1-2 por mensagem)
+    - Nunca fale mal de concorrentes
+    - Não discuta política, religião ou assuntos polêmicos
 
+# ===================================================
+# ASSUNTOS PERMITIDOS E BLOQUEADOS
+# Define sobre o que o agente pode e não pode falar
+# ===================================================
 topics:
   allowed:
-    - suporte técnico
     - dúvidas sobre produtos
-    - preços
+    - preços e promoções
     - horário de funcionamento
+    - endereço e localização
+    - formas de pagamento
+    - status de pedidos
     - agendamentos
   blocked:
     - política
     - religião
+    - assuntos pessoais
     - concorrentes
 
+# ===================================================
+# HORÁRIO DE ATENDIMENTO
+# Fora desse horário, o agente avisa que está fechado
+# ===================================================
 business_hours:
   timezone: "America/Sao_Paulo"
   schedule:
-    monday_friday: "08:00-18:00"
-    saturday: "09:00-13:00"
-    sunday: null
+    # Formato: "HH:MM-HH:MM" (24 horas)
+    monday_friday: "08:00-18:00"   # Seg-Sex: 8h às 18h
+    saturday: "09:00-13:00"        # Sábado: 9h às 13h
+    sunday: null                    # Domingo: fechado (null = fechado)
+  
+  # Mensagem automática fora do horário
   out_of_hours_message: >
-    Olá! Nosso horário de atendimento é de segunda a sexta,
+    Olá! 😊 Nosso horário de atendimento é de segunda a sexta,
     das 8h às 18h, e sábados das 9h às 13h.
-    Deixe sua mensagem que responderemos assim que possível! 😊
+    Deixe sua mensagem que responderemos no próximo dia útil!
 
+# ===================================================
+# ATENDIMENTO HUMANO
+# Quando o cliente pedir para falar com uma pessoa
+# ===================================================
 escalation:
+  # Palavras que ativam o encaminhamento para humano
   trigger_keywords:
     - "falar com humano"
-    - "atendente"
+    - "falar com atendente"
+    - "falar com pessoa"
     - "gerente"
     - "reclamação"
+    - "insatisfeito"
+  
   action: "message"
-  message: "Vou te conectar com nossa equipe. Aguarde um momento! 🙋"
+  
+  # Mensagem que o agente envia quando o cliente quer falar com humano
+  message: >
+    Entendo! Vou encaminhar você para nossa equipe de atendimento.
+    Um atendente humano vai entrar em contato em breve. 
+    Obrigado pela paciência! 🙋
 
+# ===================================================
+# CACHE (Performance)
+# Perguntas parecidas recebem a mesma resposta sem
+# gastar com IA — economiza até 70% dos custos!
+# ===================================================
 cache:
-  semantic_threshold: 0.92
-  ttl_hours: 24
+  semantic_threshold: 0.92   # Quão parecida a pergunta precisa ser (0.0–1.0)
+  ttl_hours: 24              # Quanto tempo a resposta fica no cache (em horas)
 
+# ===================================================
+# WEBHOOKS (Integrações)
+# Se você quer receber notificações no seu sistema
+# Deixe vazio se não precisar
+# ===================================================
 webhooks:
   events: []
   endpoint: null
   secret: ""
 ```
 
-> 💡 **Dica:** o `system_prompt` é onde você define o comportamento do agente. Quanto mais detalhado, melhor. Inclua informações sobre seus produtos, políticas de troca, preços, etc.
+**Salve:** `Ctrl+O` → `Enter` → `Ctrl+X`
+
+> 💡 **Dica importante:** o `system_prompt` é o cérebro do agente. Ele só sabe o que está escrito ali. Se você quer que ele responda sobre preços, coloque os preços. Se quer que ele saiba o endereço, escreva o endereço. Quanto mais informação, melhor!
 
 ---
 
-## Parte 5 — Iniciar o Agente
+## Passo 6 — Iniciar o Agente
 
-### 5.1 Subir os Serviços
+### O que vamos fazer?
+Ligar o agente e todos os serviços necessários.
 
 ```bash
 cd /opt/whatsapp-agent
 docker compose up -d
 ```
 
-Aguarde uns 30 segundos e verifique:
+Aguarde ~1 minuto e verifique:
 
 ```bash
-# Ver status dos containers
+# Ver se todos os serviços estão "running"
 docker compose ps
 
-# Verificar saúde do sistema
+# Verificar a saúde do sistema
 curl http://localhost:8000/health
 ```
 
-Resposta esperada:
-
+Resultado esperado:
 ```json
 {
   "status": "healthy",
@@ -324,32 +476,35 @@ Resposta esperada:
 }
 ```
 
-### 5.2 Verificar se o Tenant Está Carregado
+Se todos aparecem como `"up"` → está tudo funcionando! ✅
 
 ```bash
+# Ver se o agente reconhece seu tenant
 curl http://localhost:8000/api/v1/admin/tenants
 ```
 
-Deve mostrar:
-
-```json
-{
-  "count": 1,
-  "tenants": ["minha_empresa"]
-}
-```
+Deve mostrar o nome da sua empresa na lista.
 
 ---
 
-## Parte 6 — Testar
+## Passo 7 — Testar!
 
-### 6.1 Teste Manual via WhatsApp
+### Teste 1: Enviar mensagem pelo WhatsApp
 
-1. Pegue **outro celular** (ou peça para alguém)
-2. Envie uma mensagem para o **número conectado à Evolution API**
-3. O agente deve responder automaticamente! 🎉
+1. Pegue **outro celular** (não o que está conectado ao agente)
+2. Envie uma mensagem para o **número do agente**
+3. Aguarde a resposta automática (pode levar 3–10 segundos na primeira vez)
 
-### 6.2 Teste via API (sem WhatsApp)
+### Teste 2: Verificar pelo terminal
+
+```bash
+# Ver os logs em tempo real (Ctrl+C para sair)
+docker compose logs -f app
+```
+
+Você verá cada mensagem recebida e a resposta gerada pelo agente.
+
+### Teste 3: Testar direto pela API (sem precisar de WhatsApp)
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/webhook/message \
@@ -363,75 +518,118 @@ curl -X POST http://localhost:8000/api/v1/webhook/message \
 
 ---
 
-## Parte 7 — Monitoramento
+## ✅ Pronto! Seu agente está no ar!
 
-### Ver Logs em Tempo Real
+A partir de agora, toda mensagem que chegar no WhatsApp será respondida automaticamente pela IA.
+
+---
+
+## 🔧 Operações do Dia a Dia
+
+### Alterar as informações do agente
+
+Se mudou o preço, horário ou qualquer informação:
 
 ```bash
-# Logs do agente
-docker compose logs -f app
+# 1. Editar o arquivo
+nano /opt/whatsapp-agent/tenants/minha_empresa/settings.yaml
 
-# Logs de todos os serviços
-docker compose logs -f
+# 2. Recarregar (sem reiniciar!)
+curl -X POST http://localhost:8000/api/v1/admin/tenants/minha_empresa/reload
 ```
 
-### Ver Webhooks Recebidos
+### Ver os logs (o que o agente está fazendo)
 
 ```bash
-curl http://localhost:8000/api/v1/admin/webhooks/received
+cd /opt/whatsapp-agent
+docker compose logs -f app
+```
+
+Aperte `Ctrl+C` para sair dos logs.
+
+### Reiniciar o agente (se algo não estiver funcionando)
+
+```bash
+cd /opt/whatsapp-agent
+docker compose restart
+```
+
+### Ver quantos tenants estão configurados
+
+```bash
+curl http://localhost:8000/api/v1/admin/tenants
 ```
 
 ---
 
 ## ❓ Problemas Comuns
 
+### "O agente não responde nenhuma mensagem"
+
+1. Verifique se o WhatsApp está conectado:
+   ```bash
+   curl http://localhost:8080/instance/connectionState/minha_empresa \
+     -H "apikey: MinhaChaveEvolution123"
+   ```
+   Se mostrar `"close"`, reconecte escaneando o QR Code novamente.
+
+2. Verifique os logs do agente:
+   ```bash
+   cd /opt/whatsapp-agent
+   docker compose logs --tail 50 app
+   ```
+
 ### "Tenant not found" (404)
 
-O nome da pasta em `tenants/` deve ser **exatamente igual** ao nome da instância na Evolution API. Se a instância se chama `minha_empresa`, a pasta deve ser `tenants/minha_empresa/`.
+O nome da pasta em `tenants/` está diferente do nome da instância na Evolution API.
+- Pasta: `tenants/minha_empresa/`
+- Instância: `minha_empresa`
+Devem ser **exatamente iguais**.
 
-### QR Code expirou
+### "O agente dá respostas erradas"
 
-Execute novamente o comando de conexão:
+Melhore o `system_prompt` no `settings.yaml`:
+- Adicione mais informações sobre seus produtos
+- Seja mais específico nas regras
+- Adicione exemplos de perguntas e respostas
+
+### "O servidor está lento"
+
+```bash
+# Ver uso de memória
+docker stats --no-stream
+```
+
+Se a memória estiver no limite, considere um servidor maior.
+
+### "O QR Code expirou"
+
+Gere um novo:
 ```bash
 curl http://localhost:8080/instance/connect/minha_empresa \
-  -H "apikey: SUA_CHAVE_SECRETA_AQUI"
-```
-
-### Agente não responde
-
-1. Verifique os logs: `docker compose logs -f app`
-2. Verifique se a Evolution API está conectada: `curl http://localhost:8080/instance/connectionState/minha_empresa -H "apikey: SUA_CHAVE"`
-3. Verifique o health check: `curl http://localhost:8000/health`
-
-### Redis ou Qdrant "down" no health check
-
-```bash
-# Reiniciar serviço com problema
-docker compose restart redis
-# ou
-docker compose restart qdrant
-```
-
-### Atualizar configuração do agente sem reiniciar
-
-```bash
-# Edite o arquivo
-nano tenants/minha_empresa/settings.yaml
-
-# Recarregue
-curl -X POST http://localhost:8000/api/v1/admin/tenants/minha_empresa/reload
+  -H "apikey: MinhaChaveEvolution123"
 ```
 
 ---
 
-## 📞 Próximos Passos
+## 📚 Glossário
 
-1. **Personalize o system_prompt** com FAQ, informações de produtos, políticas
-2. **Configure webhooks** se quiser receber notificações no seu sistema
-3. **Ajuste o horário de atendimento** para o seu negócio
-4. **Configure HTTPS** com Nginx ou Caddy para segurança em produção
-5. **Monitore os logs** nas primeiras semanas para ajustar o comportamento
+| Termo | O que significa |
+|-------|----------------|
+| **Docker** | Programa que roda aplicações em "caixinhas" isoladas |
+| **Container** | Uma "caixinha" rodando um serviço (agente, Redis, etc.) |
+| **Terminal** | Tela preta onde digitamos comandos |
+| **SSH** | Forma segura de acessar um servidor pela internet |
+| **API** | Forma de programas conversarem entre si |
+| **Webhook** | Aviso automático que um programa envia para outro |
+| **QR Code** | Código 2D que você escaneia com a câmera do celular |
+| **Tenant** | Configuração de um cliente (cada empresa = 1 tenant) |
+| **Cache** | Memória rápida que guarda respostas para reutilizar |
+| **System Prompt** | Instruções que definem o comportamento da IA |
+| **Redis** | Banco de dados super-rápido usado para cache |
+| **Qdrant** | Banco de dados que guarda o histórico das conversas |
+| **Evolution API** | Programa gratuito que conecta ao WhatsApp |
 
 ---
 
-> 📌 **Suporte técnico:** entre em contato com a equipe de suporte para dúvidas sobre configuração avançada.
+> 📞 **Precisa de ajuda?** Entre em contato com o suporte técnico para dúvidas sobre configuração ou comportamento do agente.
