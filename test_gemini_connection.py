@@ -2,7 +2,7 @@
 import asyncio
 from google import genai
 from app.config import get_settings
-
+#
 async def test_connection():
     settings = get_settings()
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
